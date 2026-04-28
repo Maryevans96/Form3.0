@@ -11,7 +11,6 @@ import java.awt.*;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -34,7 +33,6 @@ public class Lavoro extends JFrame {
     private List<Allegati> listaAttuale = new ArrayList<>();
     private int indiceCorrente = -1;
     private SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-    private Random random = new Random();
 
     public Lavoro() {
         super("Compilatore PDF Automazione 2026");
@@ -113,6 +111,7 @@ public class Lavoro extends JFrame {
         pulisciCampiButton = new JButton("Pulisci Campi");
         JButton esciButton = new JButton("Esci");
 
+        // Disabilitati all'avvio
         precedenteButton.setEnabled(false);
         prossimoButton.setEnabled(false);
         generaTuttiButton.setEnabled(false);
@@ -166,51 +165,48 @@ public class Lavoro extends JFrame {
 
                     String odsNum = odsNumRaw.isEmpty() ? "RIGA-" + (i + 1) : odsNumRaw;
 
-                    boolean isPI = note.toUpperCase().contains("PRONTO INTERVENTO") || descBase.toUpperCase().contains("PRONTO INTERVENTO");
-                    boolean isRiatto = note.toUpperCase().contains("RIATTO ALLOGGIO") || descBase.toUpperCase().contains("RIATTO ALLOGGIO");
+                    // --- LOGICA PRONTO INTERVENTO ---
+                    boolean isPI = note.toUpperCase().contains("PRONTO INTERVENTO") ||
+                            descBase.toUpperCase().contains("PRONTO INTERVENTO");
 
-                    String descrizioneCompleta = descBase + (note.isEmpty() ? "" : " - " + note);
-
-                    if (isPI && !descrizioneCompleta.toUpperCase().contains("- PRONTO INTERVENTO")) {
-                        descrizioneCompleta += " - PRONTO INTERVENTO";
-                    }
-                    if (isRiatto && !descrizioneCompleta.toUpperCase().contains("- RIATTO ALLOGGIO")) {
-                        descrizioneCompleta += " - RIATTO ALLOGGIO";
+                    String descrizioneFinale = descBase;
+                    if (!note.isEmpty()) {
+                        descrizioneFinale += " - " + note;
                     }
 
-                    Date dInizio, dFine;
+                    // Aggiunta obbligatoria dicitura se PI
+                    if (isPI) {
+                        if (!descrizioneFinale.toUpperCase().contains("PRONTO INTERVENTO")) {
+                            descrizioneFinale += " - PRONTO INTERVENTO";
+                        }
+                    }
 
-                    if (isPI || odsNumRaw.isEmpty()) {
-                        dInizio = dOds; dFine = dOds;
-                    } else if (dOds != null && dScadenza != null) {
+                    Date dInizio = null;
+                    Date dFine = null;
+
+                    if (dOds != null) {
                         Calendar cal = Calendar.getInstance();
-                        int durata = isRiatto ? 7 : (3 + random.nextInt(2));
-
-                        cal.setTime(dOds);
-                        cal.add(Calendar.DAY_OF_MONTH, 1);
-                        long minStart = cal.getTimeInMillis();
-
-                        cal.setTime(dScadenza);
-                        cal.add(Calendar.DAY_OF_MONTH, -1 - durata);
-                        long maxStart = cal.getTimeInMillis();
-
-                        if (maxStart > minStart) {
-                            long randomStart = minStart + (long)(random.nextDouble() * (maxStart - minStart));
-                            cal.setTimeInMillis(randomStart);
-                            dInizio = cal.getTime();
-                            cal.add(Calendar.DAY_OF_MONTH, durata);
-                            dFine = cal.getTime();
+                        if (isPI) {
+                            // REGOLA PI: Inizio e Fine coincidono con ODS (1 giorno solo)
+                            dInizio = dOds;
+                            dFine = dOds;
                         } else {
-                            cal.setTime(dOds); cal.add(Calendar.DAY_OF_MONTH, 1);
+                            // REGOLA ORDINARIA: 3 GIORNI TOTALI (Inizio e Fine inclusi)
+
+                            // 1. Data Inizio = ODS + 1 giorno (per non essere mai uguale a ODS)
+                            cal.setTime(dOds);
+                            cal.add(Calendar.DAY_OF_MONTH, 1);
                             dInizio = cal.getTime();
-                            cal.add(Calendar.DAY_OF_MONTH, durata);
+
+                            // 2. Data Fine = Inizio + 2 giorni
+                            // Esempio: Inizio Lunedì (1) + 2 giorni = Mercoledì (3).
+                            // Contando Lun, Mar, Mer sono esattamente 3 giorni inclusivi.
+                            cal.add(Calendar.DAY_OF_MONTH, 2);
                             dFine = cal.getTime();
                         }
-                    } else {
-                        dInizio = null; dFine = null;
                     }
 
-                    listaDatiExcel.add(new Allegati(odsNum, dOds, dScadenza, via, dannegg, descrizioneCompleta, dInizio, dFine));
+                    listaDatiExcel.add(new Allegati(odsNum, dOds, dScadenza, via, dannegg, descrizioneFinale, dInizio, dFine));
                 }
 
                 if (!listaDatiExcel.isEmpty()) {
@@ -218,10 +214,10 @@ public class Lavoro extends JFrame {
                     generaTuttiButton.setEnabled(true);
                     esportaExcelButton.setEnabled(true);
                     applicaFiltro();
-                    JOptionPane.showMessageDialog(this, "Caricate " + listaDatiExcel.size() + " righe.");
+                    JOptionPane.showMessageDialog(this, "Caricate e elaborate " + listaDatiExcel.size() + " righe.");
                 }
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Errore: " + ex.getMessage());
+                JOptionPane.showMessageDialog(this, "Errore caricamento: " + ex.getMessage());
             }
         }
     }
@@ -229,13 +225,13 @@ public class Lavoro extends JFrame {
     private void esportaExcelAggiornato() {
         if (listaDatiExcel.isEmpty()) return;
         JFileChooser saver = new JFileChooser(System.getProperty("user.home") + File.separator + "Desktop");
-        saver.setSelectedFile(new File("Dati_Aggiornati_2026.xlsx"));
+        saver.setSelectedFile(new File("Report_Lavori_Compilati_2026.xlsx"));
 
         if (saver.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
             try (Workbook workbook = new XSSFWorkbook();
                  FileOutputStream fos = new FileOutputStream(saver.getSelectedFile())) {
 
-                Sheet sheet = workbook.createSheet("Dati Compilati");
+                Sheet sheet = workbook.createSheet("Dati Elaborati");
                 String[] headers = {"Num ODS", "Data ODS", "Scadenza", "Via", "Danneggiante", "Descrizione", "Inizio Lavori", "Fine Lavori"};
 
                 Row headerRow = sheet.createRow(0);
@@ -267,9 +263,9 @@ public class Lavoro extends JFrame {
 
                 for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
                 workbook.write(fos);
-                JOptionPane.showMessageDialog(this, "Excel salvato!");
+                JOptionPane.showMessageDialog(this, "File Excel esportato con successo sul Desktop!");
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Errore export: " + ex.getMessage());
+                JOptionPane.showMessageDialog(this, "Errore durante l'esportazione: " + ex.getMessage());
             }
         }
     }
@@ -297,7 +293,7 @@ public class Lavoro extends JFrame {
                     ok++;
                 } catch (Exception ex) { err++; }
             }
-            JOptionPane.showMessageDialog(this, "Generati: " + ok + " Errori: " + err);
+            JOptionPane.showMessageDialog(this, "Generazione completata.\nPDF creati: " + ok + "\nErrori: " + err);
         }
     }
 
@@ -321,19 +317,20 @@ public class Lavoro extends JFrame {
                 return;
             }
         }
-        JOptionPane.showMessageDialog(this, "Non trovato.");
+        JOptionPane.showMessageDialog(this, "O.d.S. non trovato nella lista attuale.");
     }
 
     private void applicaFiltro() {
         if (soloProntoInterventoCheckBox.isSelected()) {
             listaAttuale = listaDatiExcel.stream()
-                    .filter(a -> a.getDescrizioneIntervento().toUpperCase().contains("- PRONTO INTERVENTO"))
+                    .filter(a -> a.getDescrizioneIntervento().toUpperCase().contains("PRONTO INTERVENTO"))
                     .collect(Collectors.toList());
         } else {
             listaAttuale = new ArrayList<>(listaDatiExcel);
         }
         indiceCorrente = listaAttuale.isEmpty() ? -1 : 0;
         if (indiceCorrente != -1) popolaCampi(listaAttuale.get(0));
+        else clearFields();
         aggiornaStatoBottoni();
     }
 
