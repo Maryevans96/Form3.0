@@ -148,6 +148,9 @@ public class Lavoro extends JFrame {
                 listaDatiExcel.clear();
                 DataFormatter formatter = new DataFormatter();
 
+                // Contatore per gestire lo slittamento ogni 5 ODS ordinari
+                int contatoreOrdinari = 0;
+
                 for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                     Row row = sheet.getRow(i);
                     if (row == null) continue;
@@ -165,20 +168,12 @@ public class Lavoro extends JFrame {
 
                     String odsNum = odsNumRaw.isEmpty() ? "RIGA-" + (i + 1) : odsNumRaw;
 
-                    // --- LOGICA PRONTO INTERVENTO ---
                     boolean isPI = note.toUpperCase().contains("PRONTO INTERVENTO") ||
                             descBase.toUpperCase().contains("PRONTO INTERVENTO");
 
-                    String descrizioneFinale = descBase;
-                    if (!note.isEmpty()) {
-                        descrizioneFinale += " - " + note;
-                    }
-
-                    // Aggiunta obbligatoria dicitura se PI
-                    if (isPI) {
-                        if (!descrizioneFinale.toUpperCase().contains("PRONTO INTERVENTO")) {
-                            descrizioneFinale += " - PRONTO INTERVENTO";
-                        }
+                    String descrizioneFinale = descBase + (!note.isEmpty() ? " - " + note : "");
+                    if (isPI && !descrizioneFinale.toUpperCase().contains("PRONTO INTERVENTO")) {
+                        descrizioneFinale += " - PRONTO INTERVENTO";
                     }
 
                     Date dInizio = null;
@@ -186,23 +181,27 @@ public class Lavoro extends JFrame {
 
                     if (dOds != null) {
                         Calendar cal = Calendar.getInstance();
+                        cal.setTime(dOds);
+
                         if (isPI) {
-                            // REGOLA PI: Inizio e Fine coincidono con ODS (1 giorno solo)
+                            // REGOLA PI: Inizio e Fine coincidono con ODS
                             dInizio = dOds;
                             dFine = dOds;
                         } else {
-                            // REGOLA ORDINARIA: 3 GIORNI TOTALI (Inizio e Fine inclusi)
+                            // --- LOGICA SLITTAMENTO OGNI 5 ODS ---
+                            // Calcoliamo quanti giorni aggiungere: 1 base + (quoziente del contatore / 5)
+                            int giorniDaAggiungere = 1 + (contatoreOrdinari / 5);
 
-                            // 1. Data Inizio = ODS + 1 giorno (per non essere mai uguale a ODS)
-                            cal.setTime(dOds);
-                            cal.add(Calendar.DAY_OF_MONTH, 1);
+                            // Data Inizio
+                            cal.add(Calendar.DAY_OF_MONTH, giorniDaAggiungere);
                             dInizio = cal.getTime();
 
-                            // 2. Data Fine = Inizio + 2 giorni
-                            // Esempio: Inizio Lunedì (1) + 2 giorni = Mercoledì (3).
-                            // Contando Lun, Mar, Mer sono esattamente 3 giorni inclusivi.
+                            // Data Fine (manteniamo i 3 giorni lavorativi totali: Inizio + 2)
                             cal.add(Calendar.DAY_OF_MONTH, 2);
                             dFine = cal.getTime();
+
+                            // Incrementiamo il contatore solo per i non-PI
+                            contatoreOrdinari++;
                         }
                     }
 
