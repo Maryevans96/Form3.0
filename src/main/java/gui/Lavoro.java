@@ -168,6 +168,7 @@ public class Lavoro extends JFrame {
 
                     String odsNum = odsNumRaw.isEmpty() ? "RIGA-" + (i + 1) : odsNumRaw;
 
+                    // --- LOGICA PRONTO INTERVENTO ---
                     boolean isPI = note.toUpperCase().contains("PRONTO INTERVENTO") ||
                             descBase.toUpperCase().contains("PRONTO INTERVENTO");
 
@@ -180,27 +181,47 @@ public class Lavoro extends JFrame {
                     Date dFine = null;
 
                     if (dOds != null) {
-                        Calendar cal = Calendar.getInstance();
-                        cal.setTime(dOds);
+                        Calendar calInizio = Calendar.getInstance();
+                        calInizio.setTime(dOds);
 
                         if (isPI) {
                             // REGOLA PI: Inizio e Fine coincidono con ODS
                             dInizio = dOds;
                             dFine = dOds;
                         } else {
-                            // --- LOGICA SLITTAMENTO OGNI 5 ODS ---
-                            // Calcoliamo quanti giorni aggiungere: 1 base + (quoziente del contatore / 5)
-                            int giorniDaAggiungere = 1 + (contatoreOrdinari / 5);
+                            // 1. LOGICA SLITTAMENTO: Reset ogni 35 pratiche
+                            int indiceCiclico = contatoreOrdinari % 35;
+                            int giorniDaAggiungere = 1 + (indiceCiclico / 5);
 
-                            // Data Inizio
-                            cal.add(Calendar.DAY_OF_MONTH, giorniDaAggiungere);
-                            dInizio = cal.getTime();
+                            // Calcolo Data Inizio
+                            calInizio.add(Calendar.DAY_OF_MONTH, giorniDaAggiungere);
+                            dInizio = calInizio.getTime();
 
-                            // Data Fine (manteniamo i 3 giorni lavorativi totali: Inizio + 2)
-                            cal.add(Calendar.DAY_OF_MONTH, 2);
-                            dFine = cal.getTime();
+                            // 2. Calcolo Data Fine (Default: Inizio + 2 giorni per un totale di 3)
+                            Calendar calFine = Calendar.getInstance();
+                            calFine.setTime(dInizio);
+                            calFine.add(Calendar.DAY_OF_MONTH, 2);
+                            dFine = calFine.getTime();
 
-                            // Incrementiamo il contatore solo per i non-PI
+                            // 3. CONTROLLO DI SICUREZZA: Limite Scadenza ODS
+                            if (dScadenza != null && dFine.after(dScadenza)) {
+                                // Se la data calcolata sfora la scadenza, forziamo la fine alla scadenza
+                                dFine = dScadenza;
+
+                                // Ricalcoliamo l'inizio a ritroso dalla scadenza (3 giorni totali: Scadenza - 2)
+                                Calendar calResetInizio = Calendar.getInstance();
+                                calResetInizio.setTime(dFine);
+                                calResetInizio.add(Calendar.DAY_OF_MONTH, -2);
+
+                                // Se andando a ritroso finiamo prima della data dell'ODS, blocchiamo su ODS
+                                if (calResetInizio.getTime().before(dOds)) {
+                                    dInizio = dOds;
+                                } else {
+                                    dInizio = calResetInizio.getTime();
+                                }
+                            }
+
+                            // Incrementiamo solo per i non-PI
                             contatoreOrdinari++;
                         }
                     }
@@ -216,6 +237,7 @@ public class Lavoro extends JFrame {
                     JOptionPane.showMessageDialog(this, "Caricate e elaborate " + listaDatiExcel.size() + " righe.");
                 }
             } catch (Exception ex) {
+                ex.printStackTrace(); // Utile per il debug in console
                 JOptionPane.showMessageDialog(this, "Errore caricamento: " + ex.getMessage());
             }
         }
