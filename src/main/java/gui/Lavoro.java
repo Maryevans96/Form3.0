@@ -148,8 +148,8 @@ public class Lavoro extends JFrame {
                 listaDatiExcel.clear();
                 DataFormatter formatter = new DataFormatter();
 
-                // Contatore per gestire lo slittamento ogni 5 ODS ordinari
-                int contatoreOrdinari = 0;
+                // Questo contatore aumenterà di 1 per ogni pratica ordinaria
+                int contatoreSequenziale = 0;
 
                 for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                     Row row = sheet.getRow(i);
@@ -168,7 +168,6 @@ public class Lavoro extends JFrame {
 
                     String odsNum = odsNumRaw.isEmpty() ? "RIGA-" + (i + 1) : odsNumRaw;
 
-                    // --- LOGICA PRONTO INTERVENTO ---
                     boolean isPI = note.toUpperCase().contains("PRONTO INTERVENTO") ||
                             descBase.toUpperCase().contains("PRONTO INTERVENTO");
 
@@ -181,48 +180,39 @@ public class Lavoro extends JFrame {
                     Date dFine = null;
 
                     if (dOds != null) {
-                        Calendar calInizio = Calendar.getInstance();
-                        calInizio.setTime(dOds);
+                        Calendar cal = Calendar.getInstance();
+                        cal.setTime(dOds);
 
                         if (isPI) {
-                            // REGOLA PI: Inizio e Fine coincidono con ODS
                             dInizio = dOds;
                             dFine = dOds;
                         } else {
-                            // 1. LOGICA SLITTAMENTO: Reset ogni 35 pratiche
-                            int indiceCiclico = contatoreOrdinari % 35;
-                            int giorniDaAggiungere = 1 + (indiceCiclico / 5);
+                            // --- NUOVA LOGICA: INCREMENTO SEQUENZIALE +1...+7 ---
+                            // Il modulo % 7 restituisce valori da 0 a 6.
+                            // Aggiungendo 1 otteniamo la sequenza +1, +2, +3, +4, +5, +6, +7
+                            int giorniDaAggiungere = (contatoreSequenziale % 7) + 1;
 
-                            // Calcolo Data Inizio
-                            calInizio.add(Calendar.DAY_OF_MONTH, giorniDaAggiungere);
-                            dInizio = calInizio.getTime();
+                            // Imposta Data Inizio
+                            cal.add(Calendar.DAY_OF_MONTH, giorniDaAggiungere);
+                            dInizio = cal.getTime();
 
-                            // 2. Calcolo Data Fine (Default: Inizio + 2 giorni per un totale di 3)
+                            // Imposta Data Fine (Inizio + 2 giorni)
                             Calendar calFine = Calendar.getInstance();
                             calFine.setTime(dInizio);
                             calFine.add(Calendar.DAY_OF_MONTH, 2);
                             dFine = calFine.getTime();
 
-                            // 3. CONTROLLO DI SICUREZZA: Limite Scadenza ODS
+                            // --- CONTROLLO SCADENZA ---
                             if (dScadenza != null && dFine.after(dScadenza)) {
-                                // Se la data calcolata sfora la scadenza, forziamo la fine alla scadenza
                                 dFine = dScadenza;
-
-                                // Ricalcoliamo l'inizio a ritroso dalla scadenza (3 giorni totali: Scadenza - 2)
-                                Calendar calResetInizio = Calendar.getInstance();
-                                calResetInizio.setTime(dFine);
-                                calResetInizio.add(Calendar.DAY_OF_MONTH, -2);
-
-                                // Se andando a ritroso finiamo prima della data dell'ODS, blocchiamo su ODS
-                                if (calResetInizio.getTime().before(dOds)) {
-                                    dInizio = dOds;
-                                } else {
-                                    dInizio = calResetInizio.getTime();
-                                }
+                                Calendar calReset = Calendar.getInstance();
+                                calReset.setTime(dFine);
+                                calReset.add(Calendar.DAY_OF_MONTH, -2);
+                                dInizio = calReset.getTime().before(dOds) ? dOds : calReset.getTime();
                             }
 
-                            // Incrementiamo solo per i non-PI
-                            contatoreOrdinari++;
+                            // Incrementiamo il contatore per la prossima pratica ordinaria
+                            contatoreSequenziale++;
                         }
                     }
 
@@ -234,11 +224,10 @@ public class Lavoro extends JFrame {
                     generaTuttiButton.setEnabled(true);
                     esportaExcelButton.setEnabled(true);
                     applicaFiltro();
-                    JOptionPane.showMessageDialog(this, "Caricate e elaborate " + listaDatiExcel.size() + " righe.");
+                    JOptionPane.showMessageDialog(this, "Elaborazione completata con rotazione +1/+7 giorni.");
                 }
             } catch (Exception ex) {
-                ex.printStackTrace(); // Utile per il debug in console
-                JOptionPane.showMessageDialog(this, "Errore caricamento: " + ex.getMessage());
+                JOptionPane.showMessageDialog(this, "Errore: " + ex.getMessage());
             }
         }
     }
